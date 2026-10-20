@@ -110,7 +110,7 @@ def decide(st, cid, approve):
     st['log'].append(dict(ts=now().strftime('%H:%M:%S'), session='seller', tool='human_decision', args=json.dumps(dict(case=cid, approve=approve)), result=res['code'], allowed=True, reason=res['reason']))
     return res
 def view(st):
-    return dict(mode='redis' if REDIS else 'client', brain='claude' if KEY else 'offline', limit=REFUND_LIMIT, log=st['log'][::-1][:40], esc=st['esc'][::-1],
+    return dict(version=VERSION, mode='redis' if REDIS else 'client', brain='claude' if KEY else 'offline', limit=REFUND_LIMIT, log=st['log'][::-1][:40], esc=st['esc'][::-1],
       stats=dict(sessions=len({l['session'] for l in st['log'] if l['session'] != 'seller'}), refunded=sum(r['amount'] for r in st['refunds'] if r['order_id'] >= 1000),
                  blocked=sum(1 for l in st['log'] if not l['allowed']), pending=sum(1 for x in st['esc'] if x['status'] == 'pending')))
 
@@ -147,19 +147,30 @@ def claude_brain(st, s, msg, trace):
             h.append({"role": "user", "content": out})
         return "Sorry, I could not finish that. A team member will follow up."
     except Exception: del h[n:]; raise
+def classify(low):
+    if re.search(r'thank|thx', low) and len(low) < 40: return 'thanks'
+    if re.search(r'polic|how many days|how long', low): return 'policy'
+    if re.search(r'human|real person|speak to|talk to|manager|complain|cancel', low): return 'human'
+    if re.search(r'refund|money back|damag|broke|defect', low): return 'refund'
+    if re.search(r'return|exchange', low): return 'return'
+    if re.search(r'where|track|status|when|deliver|eta', low): return 'track'
+    return None
+VERSION = "v3"
 def mock_brain(st, s, msg, trace):
     m = s['mock']; low = msg.lower(); digits = re.sub(r'[\s\-+]', '', msg)
     if (x := re.search(r'\b(104\d)\b', msg)): m['oid'] = int(x.group(1))
     if (x := re.search(r'(?<!\d)(?:91)?(\d{10})(?!\d)', digits)): m['phone'] = x.group(1)
     nums = [int(n.replace(',', '')) for n in re.findall(r'\d[\d,]*', msg) if len(n.replace(',', '')) < 8 and not re.fullmatch(r'104\d', n)]
-    if re.search(r'thank|thx', low) and len(msg) < 40: return "You're welcome! Is there anything else I can help you with?"
-    if re.search(r'polic|how many days|how long', low): return f"Here is how it works: returns are accepted within {RETURN_WINDOW} days of delivery. Refunds up to Rs {REFUND_LIMIT} are processed instantly, and larger ones are reviewed by the seller. Share your order ID and phone number and I will take care of it."
-    if re.search(r'human|real person|speak to|talk to|manager|complain|cancel', low):
+    kind = classify(low)
+    if kind == 'thanks': return "You're welcome! Is there anything else I can help you with?"
+    if kind == 'policy': return f"Here is how it works: returns are accepted within {RETURN_WINDOW} days of delivery. Refunds up to Rs {REFUND_LIMIT} are processed instantly, and larger ones are reviewed by the seller. Share your order ID and phone number and I will take care of it."
+    if kind == 'human':
         r = call(st, s, 'escalate_to_human', dict(order_id=m.get('oid') or 0, summary=f"Customer asked for a person: {msg[:200]}")); trace.append(('escalate_to_human', r))
         return f"Understood. I've passed your request to the seller (case #{r['case_id']}) and they will get back to you."
-    if re.search(r'refund|money back|damag|broke|defect', low): m['intent'] = 'refund'; m['amt'] = nums[-1] if nums else None
-    elif re.search(r'return|exchange', low): m['intent'] = 'return'
-    elif re.search(r'where|track|status|when|deliver|eta', low): m['intent'] = 'track'
+    if kind in ('refund', 'return', 'track'):
+        m['intent'] = kind
+        if kind == 'refund': m['amt'] = nums[-1] if nums else None
+    if kind is None and re.match(r'\s*(hi|hello|hey|good (morning|afternoon|evening))\b', low): return "Hello! I'm Penelope. I can track your order, start a return or process a refund. How can I help?"
     if not m.get('intent'):
         if re.match(r'\s*(hi|hello|hey|good (morning|afternoon|evening))\b', low): return "Hello! I'm Penelope. I can track your order, start a return or process a refund. How can I help?"
         if m.get('oid') or m.get('phone'): return f"Thanks, I have noted {'order #%d' % m['oid'] if m.get('oid') else 'your phone number'}. Would you like me to track it, start a return or process a refund?"

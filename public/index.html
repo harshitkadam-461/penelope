@@ -44,7 +44,7 @@ async function send(e){e&&e.preventDefault();const v=$('in').value.trim();if(!v)
 async function decide(id,a){await api('decide',{id,approve:a})}
 async function reset(){S=null;sid=null;P('pen_sid','');$('chat').innerHTML='';await api('reset')}
 function render(s){mode=s.mode;
- $('brain').textContent='Brain: '+(s.brain=='claude'?'Claude (live)':'offline mock');$('lim').textContent='Auto-refund limit: Rs '+s.limit;$('mode').textContent=s.mode=='redis'?'Shared live mode':'Browser demo mode';
+ $('brain').textContent='Brain: '+(s.brain=='claude'?'Claude (live)':'offline mock')+' \u00b7 '+(s.version||'old');$('lim').textContent='Auto-refund limit: Rs '+s.limit;$('mode').textContent=s.mode=='redis'?'Shared live mode':'Browser demo mode';
  $('s1').textContent=s.stats.sessions;$('s2').textContent=s.stats.refunded;$('s3').textContent=s.stats.blocked;$('s4').textContent=s.stats.pending;
  $('esc').innerHTML=s.esc.length?s.esc.map(c=>`<div class="case ${c.status}"><b>Case #${c.id}</b> &middot; order ${c.order_id} &middot; Rs ${c.amount} &middot; <i>${c.status}</i><p>${esc(c.summary)}</p>${c.status=='pending'?`<button onclick="decide(${c.id},true)">Approve</button> <button onclick="decide(${c.id},false)">Reject</button>`:''}</div>`).join(''):'<p style="color:var(--mute)">No cases yet.</p>';
  $('log').innerHTML=s.log.map(l=>`<tr><td>${l.ts}</td><td>${l.tool}</td><td>${esc(l.args)}</td><td class="${l.allowed?'ok':'no'}">${l.result}${l.reason?'<br>'+esc(l.reason):''}</td></tr>`).join('')}
