@@ -152,10 +152,18 @@ def mock_brain(st, s, msg, trace):
     if (x := re.search(r'\b(104\d)\b', msg)): m['oid'] = int(x.group(1))
     if (x := re.search(r'(?<!\d)(?:91)?(\d{10})(?!\d)', digits)): m['phone'] = x.group(1)
     nums = [int(n.replace(',', '')) for n in re.findall(r'\d[\d,]*', msg) if len(n.replace(',', '')) < 8 and not re.fullmatch(r'104\d', n)]
+    if re.search(r'thank|thx', low) and len(msg) < 40: return "You're welcome! Is there anything else I can help you with?"
+    if re.search(r'polic|how many days|how long', low): return f"Here is how it works: returns are accepted within {RETURN_WINDOW} days of delivery. Refunds up to Rs {REFUND_LIMIT} are processed instantly, and larger ones are reviewed by the seller. Share your order ID and phone number and I will take care of it."
+    if re.search(r'human|real person|speak to|talk to|manager|complain|cancel', low):
+        r = call(st, s, 'escalate_to_human', dict(order_id=m.get('oid') or 0, summary=f"Customer asked for a person: {msg[:200]}")); trace.append(('escalate_to_human', r))
+        return f"Understood. I've passed your request to the seller (case #{r['case_id']}) and they will get back to you."
     if re.search(r'refund|money back|damag|broke|defect', low): m['intent'] = 'refund'; m['amt'] = nums[-1] if nums else None
     elif re.search(r'return|exchange', low): m['intent'] = 'return'
     elif re.search(r'where|track|status|when|deliver|eta', low): m['intent'] = 'track'
-    if not m.get('intent'): return "Hi, I'm Penelope. I can track orders, start returns and process refunds. What do you need?"
+    if not m.get('intent'):
+        if re.match(r'\s*(hi|hello|hey|good (morning|afternoon|evening))\b', low): return "Hello! I'm Penelope. I can track your order, start a return or process a refund. How can I help?"
+        if m.get('oid') or m.get('phone'): return f"Thanks, I have noted {'order #%d' % m['oid'] if m.get('oid') else 'your phone number'}. Would you like me to track it, start a return or process a refund?"
+        return 'I can help with order tracking, returns and refunds. For example: "Where is my order 1044?" or "I want a refund for order 1042". Please include your order ID and the phone number on the order.'
     if not m.get('oid'): return "Sure. What is your order ID?"
     if not m.get('phone'): return "Thanks. Please share the phone number on the order so I can verify it."
     oid = m['oid']
