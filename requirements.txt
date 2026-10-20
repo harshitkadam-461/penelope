@@ -1,1 +1,1 @@
-# no third-party packages needed
+flask>=3.0
